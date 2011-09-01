@@ -1,18 +1,21 @@
 #!/usr/bin/perl -w
 # Script: seqcount.pl
-# Description: Displays the number of sequences in the fasta (default) or genbank files found in the current directory
+# Description: Displays the number of sequences in all fasta (default) or genbank files found in the current directory, or a specific fasta/genbank file
 # Author: Steven Ahrendt
 # email: sahrendt0@gmail.com
-# Date: 6.16.11
+# Date: 9.1.11
 #         v1.0
 #         v1.5  : added genbank support
+#         v1.6  : added file input option
 #################################
-# Usage: seqcount.pl [type]
+# Usage: seqcount.pl [type] [output] [file]
 #################################
-# "type": -g for genbank
+# "type":   -g for genbank
+# "output": -v for verbose (create .seqlist/count files)
+# "file":   -f, followed by the filename
 #################################
-# The script also creates a *.seqlist file containing the ids for each sequence, 
-#  as well as a "counts" file containing the name of each sequence file and the number
+# .seqlist files contain the display ids for each sequence, 
+#  "counts" file containing the name of each sequence file and the number
 #  of sequences within it
 #################################
 
@@ -21,46 +24,55 @@ use Bio::Seq;
 use Bio::SeqIO;
 
 my $format = "fasta";
-my $ext = "f";
+my $ext = "f.*a";
+my $verbose = 0;
+my @files;
 
 # Handle command-line options
 use Getopt::Std;
 my %opts;
-getopts('g', \%opts);
+getopts('gvf', \%opts);
 if (exists $opts{'g'}) 
 {
   $format = "genbank";
-  $ext = "g";
+  $ext = "gbk";
 }
-
-my $dir = ".";
-
-opendir(DIR,$dir);
-my @files;
-@files = grep {/\.$ext.+$/} readdir(DIR);
-closedir(DIR);
-
+if (exists $opts{'v'}) 
+{
+  $verbose = 1;
+}
+if (exists $opts{'f'}) 
+{
+  push(@files,$ARGV[0]);
+}
+else
+{
+  my $dir = ".";
+  opendir(DIR,$dir);
+  @files = sort(grep {/\.$ext$/} readdir(DIR));
+  closedir(DIR);
+}
 my $numfiles = @files;
 
 if($numfiles > 0)
 {
-  open(COUNTS,">counts");
+  if($verbose){open(COUNTS,">counts");}
   foreach my $file (@files)
   {
     my $numseqs=0;
     my $seqfile = Bio::SeqIO->new(-file=>$file,
                                     -format=>$format);
-    open(LIST,">$file.seqlist");
+    if($verbose){open(LIST,">$file.seqlist");}
     while(my $seq = $seqfile->next_seq())
     {
 	    $numseqs++;
-	    print LIST $seq->display_id(),"\n";
+	    if($verbose){print LIST $seq->display_id(),"\n";}
     }
-    close(LIST);
+    if($verbose){close(LIST);}
     print "$file\t$numseqs\n";
-    print COUNTS "$file\t$numseqs\n";
+    if($verbose){print COUNTS "$file\t$numseqs\n";}
   }
-  close(COUNTS);
+  if($verbose){close(COUNTS);}
 }
 else
 {
