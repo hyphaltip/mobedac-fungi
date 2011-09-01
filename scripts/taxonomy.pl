@@ -33,7 +33,7 @@ my ($ID,$org,@lines,$name);
 my $numseqs = 0;
 my $unidentified = 0; # Unidentified organisms
 my $show = 0; # Show or hide ranks with value "no rank"
-
+my $outext = "";
 # Handle command-line options
 use Getopt::Std;
 my %opts;
@@ -41,6 +41,7 @@ getopts('s', \%opts);
 if (exists $opts{'s'}) 
 {
   $show = 1;
+  $outext = ".norank";
 }
 
 my $IDfile = $ARGV[0];
@@ -78,6 +79,7 @@ chomp(@lines);
 my @f = split(/\./,$IDfile);
 pop(@f);
 my $filename = join(".",@f);
+$filename = join("",$filename,$outext);
 
 print "Creating taxonomy hierarchy..\n";
 open(HASH,">$filename\.taxonomy");
