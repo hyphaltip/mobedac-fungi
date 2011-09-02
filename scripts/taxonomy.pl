@@ -69,22 +69,19 @@ my $taxdb = Bio::DB::Taxonomy->new(-source => 'flatfile',
                                    -namesfile => $namefile);
 print "..done\n";
 
-## Get descriptions from ID file
-open(ID,"<$IDfile") or die "Can't open file \"$IDfile\"\n";
-@lines = <ID>;
-close(ID);
-chomp(@lines);
-
 ## Store filename for output files
 my @f = split(/\./,$IDfile);
 pop(@f);
 my $filename = join(".",@f);
 $filename = join("",$filename,$outext);
 
+## Get descriptions from ID file
+open(ID,"<$IDfile") or die "Can't open file \"$IDfile\"\n";
 print "Creating taxonomy hierarchy..\n";
 open(HASH,">$filename\.taxonomy");
-foreach my $line (@lines)
+foreach my $line (<ID>)
 {
+  chomp($line);
   #print $line,"\n";
   ## GI/Accession number is the first item before the first underscore
   ## Organism name/Taxonomy ID is everything after the first underscore
@@ -96,7 +93,7 @@ foreach my $line (@lines)
   ## If the input provided is a Taxonomy ID number, 
   ##  get the corresponding organism name
   my $input = $org;
-  if($input =~ /^[0-9]+$/)
+  if($input =~ /^\d+$/)
   {
     $input = ($taxdb->get_taxon(-taxonid => $org))->scientific_name;
   }
@@ -151,6 +148,7 @@ foreach my $line (@lines)
 
   ## Flag missing taxonomic ranks
 }
+close(ID);
 print "..done\n";
 if($unidentified)
 {
