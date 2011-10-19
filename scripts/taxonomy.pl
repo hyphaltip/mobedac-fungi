@@ -25,26 +25,24 @@
 #####################################
 
 use strict;
-use Bio::Seq;
-use Bio::SeqIO;
 use Bio::DB::Taxonomy;
+use File::Spec;
+use Bio::SeqIO;
+use Getopt::Long;
 
-my ($ID,$org,@lines,$name);
+my ($name);
 my $numseqs = 0;
 my $unidentified = 0; # Unidentified organisms
 my $show = 0; # Show or hide ranks with value "no rank"
 my $outext = "";
 # Handle command-line options
-use Getopt::Std;
-my %opts;
-getopts('s', \%opts);
-if (exists $opts{'s'}) 
-{
-  $show = 1;
-  $outext = ".norank";
-}
+my $debug;
 
-my $IDfile = $ARGV[0];
+GetOptions( 's|show!'=> sub { $show = 1; $outext = '.norank'},
+	    'verbose|debug!' => \$debug,
+	    );
+
+my $IDfile = shift @ARGV;
 
 
 ## Function to process a scientific name based on taxonomic rank
@@ -53,21 +51,20 @@ sub getName {
   my $to = shift;
   my $rank = $to->rank();
   my $res = $to->scientific_name;
-  if($rank eq "no rank")
-  {
-    $res = join("","<",$to->scientific_name,">");
+  if($rank eq "no rank") {
+      $res = join("","<",$to->scientific_name,">");
   }
   return $res;
 }
 
 ## Make local taxonomy db
-print "Constructing flatfile db..\n";
+warn( "Constructing flatfile db..\n") if $debug;
 my $nodesfile = "./ncbi/nodes.dmp";
 my $namefile = "./ncbi/names.dmp";
 my $taxdb = Bio::DB::Taxonomy->new(-source => 'flatfile',
                                    -nodesfile => $nodesfile,
                                    -namesfile => $namefile);
-print "..done\n";
+warn( "loaded taxonomy db..done\n") if $debug;
 
 ## Store filename for output files
 my @f = split(/\./,$IDfile);
@@ -76,80 +73,56 @@ my $filename = join(".",@f);
 $filename = join("",$filename,$outext);
 
 ## Get descriptions from ID file
-open(ID,"<$IDfile") or die "Can't open file \"$IDfile\"\n";
-print "Creating taxonomy hierarchy..\n";
-open(HASH,">$filename\.taxonomy");
-foreach my $line (<ID>)
-{
-  chomp($line);
-  #print $line,"\n";
-  ## GI/Accession number is the first item before the first underscore
-  ## Organism name/Taxonomy ID is everything after the first underscore
-  my @descriptors = split(/\_/, $line);
-  $ID = $descriptors[0];
-  shift(@descriptors);
-  $org = join(" ",@descriptors);
+my $seqio = Bio::SeqIO->new(-format => 'fasta',
+			    -file   =>  $IDfile);
+warn "Creating taxonomy hierarchy..\n" if $debug;
 
-  ## If the input provided is a Taxonomy ID number, 
-  ##  get the corresponding organism name
-  my $input = $org;
-  if($input =~ /^\d+$/)
-  {
-    $input = ($taxdb->get_taxon(-taxonid => $org))->scientific_name;
-  }
+my $out = Bio::SeqIO->new(-format=> 'fasta',
+			  -file  => ">$filename\.taxonomy.seqs");
+open(UNID,">$filename\.unidentified");
+while (my $seq = $seqio->next_seq) {
+    
+    my $line = $seq->display_name;
+    #print $line,"\n";
+    ## GI/Accession number is the first item before the first underscore
+    ## Organism name/Taxonomy ID is everything after the first underscore
+    my ($ID,@descriptors) = split(/\_/, $line);
+    my $org = join(" ",@descriptors);
+    
+    ## If the input provided is a Taxonomy ID number, 
+    ##  get the corresponding organism name
+    my $input = $org;
+    if($input =~ /^\d+$/) {
+	$input = ($taxdb->get_taxon(-taxonid => $org))->scientific_name;
+    }
 
   ## Using organism name, generate hierarchy
   my @hierarchy;
-  if(my $curr = $taxdb->get_taxon(-name => $input))
-  {
-    $name = getName($curr);
-    #unshift(@hierarchy,$name);
-    ## Default: hide "no rank"
-    ## Flag: -s = show "no rank"
+  if(my $curr = $taxdb->get_taxon(-name => $input)) {
+      my $name = getName($curr);
+      #unshift(@hierarchy,$name);
+      ## Default: hide "no rank"
+      ## Flag: -s = show "no rank"
 
-    if($name !~ /^</)
-    {
-      unshift(@hierarchy,$name);
-    }
-    else
-    {
-      if($show)
-      {
-        unshift(@hierarchy,$name);
+      # could also just check and see if $curr->rank is NULL?
+      while($curr) {
+	  $name = getName($curr);
+	  if($name !~ /^</ || $show)  {
+	      unshift(@hierarchy,$name);
+	  }
+	  $curr = $curr->ancestor;
       }
-    }
-    
-    while($curr = $curr->ancestor)
-    {
-      $name = getName($curr);
-      if($name !~ /^</)
-      {
-        unshift(@hierarchy,$name);
-      }
-      else
-      {
-        if($show)
-        {
-          unshift(@hierarchy,$name);
-        }
-      }
-    }
-    print HASH "$ID\t";
-    print HASH join(";",@hierarchy);
-    print HASH ".\n";
-  }
-  else
-  {
-    open(UNID,">>$filename\.unidentified");
-    $unidentified = 1;
-    print UNID $input,"\n";
-    close(UNID);
+      $seq->description(join(";",@hierarchy).".");
+      $out->write_seq($seq);      
+  } else {
+      ## Flag missing taxonomic ranks
+      $unidentified = 1;
+      print UNID "$ID $input\n";
   }
 
-  ## Flag missing taxonomic ranks
 }
-close(ID);
-print "..done\n";
+warn( "..done\n") if $debug;
+
 if($unidentified)
 {
   print "Some organisms were not found in the taxonomy database.\n";
