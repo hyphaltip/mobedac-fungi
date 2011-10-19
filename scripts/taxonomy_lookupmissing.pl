@@ -190,10 +190,12 @@ while (my $seq = $seqio->next_seq) {
     my $gi = $acc2gi_hdb->get($ID);
 
     my ($input,$taxid,$curr,@hierarchy);
+    my $input = join(" ",@descriptors);	
+
     if( defined $gi && defined($taxid = $gi2taxa_hdb->get($gi))) {
 	# found taxid	
+	
     } else {
-	$input = join(" ",@descriptors);	
 	## If the input provided is a Taxonomy ID number, 
 	##  get the corresponding organism name
 	if( $input =~ /^\d+$/) {
@@ -203,7 +205,9 @@ while (my $seq = $seqio->next_seq) {
     if( $taxid ) {
 	$curr = $taxdb->get_taxon(-taxonid => $taxid);
 	if( ! defined $curr ) { 
-	    warn("cannot lookup $taxid should I check for $input instead?\n"); }
+	    warn("cannot lookup $taxid should I check for $input instead?\n"); 
+	    $curr = $taxdb->get_taxon(-name => $input);
+        }
     } else {
 	$curr = $taxdb->get_taxon(-name => $input);
     }
