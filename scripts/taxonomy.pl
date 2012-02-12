@@ -80,8 +80,8 @@ warn "Creating taxonomy hierarchy..\n" if $debug;
 my $out = Bio::SeqIO->new(-format=> 'fasta',
 			  -file  => ">$filename\.taxonomy.seqs");
 open(UNID,">$filename\.unidentified");
-while (my $seq = $seqio->next_seq) {
-    
+open(OUT,">$filename\.taxonomy");
+while (my $seq = $seqio->next_seq) { 
     my $line = $seq->display_name;
     #print $line,"\n";
     ## GI/Accession number is the first item before the first underscore
@@ -98,20 +98,30 @@ while (my $seq = $seqio->next_seq) {
 
   ## Using organism name, generate hierarchy
   my @hierarchy;
+  my %ranks;
   if(my $curr = $taxdb->get_taxon(-name => $input)) {
       my $name = getName($curr);
+      #print $name,";";
       #unshift(@hierarchy,$name);
       ## Default: hide "no rank"
       ## Flag: -s = show "no rank"
 
       # could also just check and see if $curr->rank is NULL?
       while($curr) {
+	  
+          if($curr->rank eq "kingdom" || $curr->rank eq "phylum" || $curr->rank eq "class" || $curr->rank eq "order" || $curr->rank eq "family" || $curr->rank eq "genus")
+          {
+	  #print "<",$curr->rank,">;";
 	  $name = getName($curr);
+          #print $name,";";
 	  if($name !~ /^</ || $show)  {
 	      unshift(@hierarchy,$name);
 	  }
+          }
 	  $curr = $curr->ancestor;
       }
+      #print "\n";
+      print OUT $ID,"\t",join(";",@hierarchy),"\n";
       $seq->description(join(";",@hierarchy).".");
       $out->write_seq($seq);      
   } else {
@@ -128,3 +138,5 @@ if($unidentified)
   print "Some organisms were not found in the taxonomy database.\n";
   print "These organisms are in the \"$filename\.unidentified\" file.\n";
 }
+close(UNID);
+close(OUT);
