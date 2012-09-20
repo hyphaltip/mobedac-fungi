@@ -70,14 +70,14 @@ for my $dir ( readdir(BASE) ) {
 		    eval {
 			$factory->get_Response(-file => $outfile);
 		    };
-
 		    if( $@ ) {
 			warn("Download problem with $id from: $@\n");
 		    }
-		}	
-	    } else {
-		warn("already see $basedir/$dir/$projectid/$nm.gbk present so skipping\n");
-	    } 
+		    sleep 5;		    
+		} else {
+		    warn("already see $basedir/$dir/$projectid/$nm.gbk present so skipping\n");
+		} 
+	    }
 	}
     }
     last if $debug;
