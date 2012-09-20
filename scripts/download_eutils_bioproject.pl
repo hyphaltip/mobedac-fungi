@@ -1,11 +1,8 @@
 #!/usr/bin/perl -w
 use strict;
-use LWP::Simple;
 use Bio::DB::EUtilities;
 use Bio::Tools::EUtilities::History;
 use LWP::Simple;
-use Bio::DB::GenBank;
-use Bio::SeqIO;
 use XML::Simple;
 use File::Spec;
 use Getopt::Long;
@@ -28,7 +25,7 @@ my $retmax = 1000;
 GetOptions(
     'q|query:s' => \$query,
     'b|basedir:s' => \$basedir,
-    'debug|v:s' => \$debug,
+    'debug|v!' => \$debug,
     'retmax:i'  => \$retmax,
     'f|force!'  => \$force, # force downloads even if file exists
     );
@@ -120,7 +117,7 @@ for my $id ( @ids ) {
 	    $output = get($url);
 	    $url = sprintf('%s/elink.fcgi?dbfrom=bioproject&db=nuccore&id=%d&retmax=1000',
 			   $base,$bioproj_id);
-	    warn("Getting $url\n") if $debug;
+	    warn("Getting $bioproj_id $species $url\n") if $debug;
 	    my $output2 = get($url);
 	    warn("obtained from $url\n") if $debug;
 	    #warn("$output");
@@ -156,7 +153,7 @@ for my $id ( @ids ) {
 		}
 		mkdir($species_strain_dir);
 		$projname =~ s/\s+/_/g;
-		open(my $rptfh => ">$species_strain_dir/$projname.txt") || die "$species_strain_dir: $!";
+		open(my $rptfh => ">$species_strain_dir/$projname.txt") || die "$species_strain_dir/$projname.txt: $!";
 		print $rptfh $projtitle, "\n", $projname, "\n";	    
 		
 		warn Dumper($doc->{Lineage}) if $debug;
