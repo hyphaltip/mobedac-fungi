@@ -18,11 +18,12 @@ my $gb = Bio::DB::GenBank->new();
 my $force = 0;
 my $debug = 0;
 my $retmax = 1000;
-
+my $skip_mRNA = 1;
 GetOptions(
     'b|basedir:s' => \$basedir,
     'debug|v!' => \$debug,
     'retmax:i'  => \$retmax,
+    's|skip|skipmRNA!' => \$skip_mRNA,
     'f|force!'  => \$force, # force downloads even if file exists
     );
 
@@ -57,8 +58,14 @@ for my $dir ( readdir(BASE) ) {
 	
 	    }
 
-	    warn("downloading @seqids\n");		
+	    warn("downloading @seqids\n") if $debug;		
+		my $first = 1;
+	    my $skip_project = 0;
 	    for my $id ( @seqids ) {
+		if( $skip_project ) {
+			warn("Skipping out on project $projectid, it is mRNA\n");
+			last;
+		}
 		my $outfile = "$basedir/$dir/$projectid/$id.gbk";
 		if( $force || ! -f $outfile ) {		
 		    my $factory = Bio::DB::EUtilities->new(-eutil   => 'efetch',
@@ -73,10 +80,21 @@ for my $dir ( readdir(BASE) ) {
 		    if( $@ ) {
 			warn("Download problem with $id from: $@\n");
 		    }
-		    sleep 5;		    
+		    sleep 3;
 		} else {
-		    warn("already see $basedir/$dir/$projectid/$nm.gbk present so skipping\n");
+		    warn("already see $basedir/$dir/$projectid/$id.gbk present so skipping\n") if $debug;
 		} 
+		if( $first && $skip_mRNA) { 
+			open(my $fh => $outfile)|| die $!;
+			while(<$fh>) {
+				if( /^LOCUS/ && /mRNA/ ) {
+				   $skip_project = 1;
+				   last;
+				}
+			}
+		    close($fh);
+		}
+		$first = 0;
 	    }
 	}
     }
