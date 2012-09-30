@@ -2,18 +2,14 @@
 use strict;
 use Bio::DB::EUtilities;
 use Bio::Tools::EUtilities::History;
-use Bio::DB::GenBank;
 use Bio::SeqIO;
 use File::Spec;
 use Getopt::Long;
-use Data::Dumper;
-use Bio::DB::Query::GenBank;
 use File::Temp qw(tempfile);
 
 # THIS REQUIRES YOU SHOULD HAVE RUN download_eutils_bioproject.pl already
 my $MAX_TO_QUERY = 500;
 my $basedir = 'genomes_download';
-my $gb = Bio::DB::GenBank->new();
 
 my $force = 0;
 my $debug = 0;
@@ -96,10 +92,10 @@ for my $dir ( readdir(BASE) ) {
 		my %chunkids = map { $_ => 0 } @chunk;
 		my $factory = Bio::DB::EUtilities->new(-eutil   => 'efetch',
 						       -db      => 'nucleotide',
-						       -rettype => 'gb',
+						       -rettype => 'gbwithparts',
 						       -email   => 'jason@bioperl.org',
 						       -id      => \@chunk);		    
-		$factory->set_parameters(-rettype => 'gbwithparts');
+#		$factory->set_parameters(-rettype => 'gbwithparts');
 		eval {
 		    $factory->get_Response(-file => $tempfile);
 		    
