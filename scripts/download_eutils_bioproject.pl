@@ -148,7 +148,7 @@ for my $id ( @ids ) {
 		    next;
 		}
 		mkdir($species_strain_dir);
-		$projname =~ s/[\s+\/\\]/_/g;
+		$projname =~ s/[\s+\/\\'"]/_/g;
 		open(my $rptfh => ">$species_strain_dir/$projname.txt") || die "$species_strain_dir/$projname.txt: $!";
 		print $rptfh $projtitle, "\n", $projname, "\n";	    
 
