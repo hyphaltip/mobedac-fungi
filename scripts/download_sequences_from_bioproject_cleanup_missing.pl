@@ -28,11 +28,12 @@ opendir(BASE,$basedir) || die "cannot open $basedir directory: $!";
 for my $dir ( readdir(BASE) ) {
     next if $dir =~ /^\./;
     next unless ( -d "$basedir/$dir");
+
     # each dir is a species name
     opendir(DIR,"$basedir/$dir") || die "cannot open $basedir/$dir: $!";
     for my $projectid ( readdir(DIR) ) {
 	next if $projectid =~ /^\./;
-	next unless ( -d "$basedir/$dir/$projectid");
+	next unless ( -d "$basedir/$dir/$projectid");	
 	opendir(PROJDIR,"$basedir/$dir/$projectid") || die "cannot open $basedir/$dir/$projectid: $!";
 	
 	my %filenames;
@@ -66,7 +67,7 @@ for my $dir ( readdir(BASE) ) {
 	    warn("no project file with species name ready to process in $dir/$projectid\n");
 	    next;
 	}
-	my $master_file = $species_name_base . '.master.genbank';
+	my $master_file = "$basedir/$dir/$projectid/$species_name_base" . '.master.genbank';
 	# master exists, skip
 	next unless ( $force || ! $filenames{$master_file} );
 
@@ -145,6 +146,7 @@ for my $dir ( readdir(BASE) ) {
 		    open(my $infh => $tempfile) || die $!;
 		    while(<$infh>) {
 			next unless length ($_) > 0;
+			next if /^\s+$/;
 			my $accn = '?';		
 			if( /^ACCESSION\s+(\S+)/ || /LOCUS\s+(\S+)/) {
 			    $accn = $1;
@@ -157,7 +159,7 @@ for my $dir ( readdir(BASE) ) {
 				close($tfh);
 				$filenames{"$ginum.bak"} = "$basedir/$dir/$projectid/$ginum.gbk";
 			    } else {
-				warn("not writing $accn -> $ginum, already exists\n");
+				warn("not writing $accn -> $ginum, already exists\n") if $debug;
 			    }
 			} else { 
 			    warn("no GI number parseable ($_)\n");
