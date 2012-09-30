@@ -1,19 +1,15 @@
 #!/usr/bin/perl -w
 use strict;
 use Bio::DB::EUtilities;
-use Bio::Tools::EUtilities::History;
 use LWP::Simple;
 use XML::Simple;
 use File::Spec;
 use Getopt::Long;
 use Data::Dumper;
-use Bio::DB::Taxonomy;
 
 my $basedir = 'genomes_download';
 
-my $taxdb = Bio::DB::Taxonomy->new(-source => 'entrez');
 my $xs = XML::Simple->new;
-my $gb = Bio::DB::GenBank->new;
 
 my $base = 'http://eutils.ncbi.nlm.nih.gov/entrez/eutils';
 my $query='txid4751[Organism:exp]';
@@ -96,12 +92,12 @@ for my $id ( @ids ) {
     $output = get($url);
     my %seen_projids;
     if( -f "$species_dir/bioproject_ids.dat" ) {
-     open(my $fh => "$species_dir/bioproject_ids.dat");
-     while(<$fh>) {
-	my ($pid) = split;
-	$seen_projids{$pid}++;
-    }
-   } 
+	open(my $fh => "$species_dir/bioproject_ids.dat");
+	while(<$fh>) {
+	    my ($pid) = split;
+	    $seen_projids{$pid}++;
+	}
+    } 
     my @bioproj_ids;
     if( $output =~ /<LinkSetDb>(.+)<\/LinkSetDb>/sio ) {
 	my $link = $1;
@@ -133,29 +129,29 @@ for my $id ( @ids ) {
 		my $simple = $xs->XMLin($output);
 		my ($projname, $projtitle);
 		if( ! ref($simple) ) { 
-		   next;
+		    next;
 		}
 		my $doc = $simple->{DocumentSummary};
-		
+
 		unless( $projtitle = $doc->{Project}->{ProjectDescr}->{Title} ) {
 		    warn("cannot parse name out of the XML\n");
 		} 
 		unless( $projname = $doc->{Project}->{ProjectDescr}->{Name} ) 
-		{	# OrganismName
+		{		# OrganismName
 		    # Strain
 		    warn("cannot parse name out of the XML\n");
 		}
 		my $species_strain_dir = File::Spec->catdir($species_dir,$bioproj_id);
 		# convert this into creating XML for EUPATHDB?
 		if( -d $species_strain_dir && ! $force ) {
-			warn("skipping $species_strain_dir, already processed\n");
-			next;
+		    warn("skipping $species_strain_dir, already processed\n");
+		    next;
 		}
 		mkdir($species_strain_dir);
-		$projname =~ s/\s+/_/g;
+		$projname =~ s/[\s+\/\\]/_/g;
 		open(my $rptfh => ">$species_strain_dir/$projname.txt") || die "$species_strain_dir/$projname.txt: $!";
 		print $rptfh $projtitle, "\n", $projname, "\n";	    
-		
+
 		warn Dumper($doc->{Lineage}) if $debug;
 		my (@l,@ln);
 		for my $item ( @{$doc->{Lineage}->{Item} || []} ) {
@@ -165,35 +161,12 @@ for my $id ( @ids ) {
 		}
 		print $rptfh join(";", @l), "\n";
 		print $rptfh join(";", @ln), "\n";
-		
+
 		print $rptfh join("\t", qw(GENOMEGROUP BIOPROJECT NUCL_GI_IDS)),"\n";		
 		print $rptfh join("\t", $id, $bioproj_id, join(",", @nucl_ids)),"\n";
-		if( 0 ) {
-		    if( $force || 
-			! -f "$species_strain_dir/sequences.gbk" ||
-			-z "$species_strain_dir/sequences.gbk" ) {
-			eval { 
-			    my $out = Bio::SeqIO->new(-format => 'genbank',
-						      -file   => ">$species_strain_dir/sequences.gbk");
-			    for my $nuclid ( @nucl_ids ) {
-				if( my $seq = $gb->get_Seq_by_gi($nuclid) ) {
-				    $out->write_seq($seq);
-			    } else {
-				print $rptfh "Seq $nuclid failed\n";
-			    }
-			    }
-			};
-			if( $@ ) {
-			warn("error $@");
-			}
-		    } else {
-			warn("skipping $species_strain_dir sequences, already downloaded\n");
-		    }
-		}
-#		sleep 5;
-	    }
-	} 
+	    }	    
 #	sleep 5;
-    }
+	}
 #    sleep 10;
+    }
 }
