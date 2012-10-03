@@ -136,5 +136,5 @@ for my $dir ( readdir(BASE) ) {
 	    }
 	}
     }
-    last if $debug;
+    #last if $debug;
 }

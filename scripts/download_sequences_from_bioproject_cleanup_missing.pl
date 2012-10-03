@@ -14,6 +14,7 @@ my $debug = 0;
 my $retmax = 1000;
 my $skip_mRNA = 1;
 my $tmpdir = '/dev/shm';
+my $match;
 GetOptions(
     'b|basedir:s' => \$basedir,
     'debug|v!' => \$debug,
@@ -21,6 +22,8 @@ GetOptions(
     's|skip|skipmRNA!' => \$skip_mRNA,
     'f|force!'  => \$force, # force downloads even if file exists	
     't|tmp:s'  => \$tmpdir,
+    'max:i'    => \$MAX_TO_QUERY,
+    'match:s'  => \$match,
     );
 
 my ($tempfh,$tempfile) = tempfile(DIR => $tmpdir,CLEANUP=>1);
@@ -28,7 +31,9 @@ opendir(BASE,$basedir) || die "cannot open $basedir directory: $!";
 for my $dir ( readdir(BASE) ) {
     next if $dir =~ /^\./;
     next unless ( -d "$basedir/$dir");
-
+    if( $match && $dir !~ /$match/ ) {
+	next;
+    }
     # each dir is a species name
     opendir(DIR,"$basedir/$dir") || die "cannot open $basedir/$dir: $!";
     for my $projectid ( readdir(DIR) ) {
@@ -72,8 +77,10 @@ for my $dir ( readdir(BASE) ) {
 	next unless ( $force || ! $filenames{$master_file} );
 
 	my (@acc, @acc_scaff, %skip_toplevel);
+	my $molecule = 'nuclear';
 	# %skip_toplevel - is just to remember to skip this file in the future as it is a toplevel 
 	# organizing sequence file
+	my %mt;
 	for my $gbk ( map { $_->[1] } 
 		      sort { $a->[0] <=> $b->[0] }
 		      map { [ /(\d+)\.gbk/, $_ ] } 
@@ -93,6 +100,8 @@ for my $dir ( readdir(BASE) ) {
 		    my $accnums = $1;
 		    push @acc_scaff,split(/,/,$accnums);
 		    $skip_toplevel{$gbk}++;
+		} elsif( /organelle="mitochondrion"/ ) {
+		    $mt{$gbk} = $filenames{$gbk};		    
 		} elsif( /ORIGIN/ ) {
 		    last;
 		}
@@ -111,17 +120,20 @@ for my $dir ( readdir(BASE) ) {
 	    my %full_acc_list;
 	    for my $acc ( @set ) {
 		if( $acc =~ /(\S+)\-(\S+)/ ) {
+		    warn("$acc\n") if $debug;
 		    my ($start,$end) = ($1,$2);
 		    my $break_point = 0;
 		    for( my $i =0; $i < length($start); $i++) {
 			if( substr($end,$i,1) ne substr($start,$i,1) ) {
 			    $break_point = $i;
+			    last;
 			}
 		    }
 		    my $start_num = substr($start,$break_point-1);
 		    my $end_num   = substr($end,$break_point-1);
 		    my $l = length $start_num;
 		    my @acc_full;
+		    warn("$start $start_num -> $end_num\n") if $debug;
 		    for(my $j = $start_num; $j <= $end_num; $j++ ) {			
 			$full_acc_list{sprintf "%s%0$l"."d",
 				       substr($start,0,$break_point-1),
@@ -185,10 +197,18 @@ for my $dir ( readdir(BASE) ) {
 		      sort { $a->[0] <=> $b->[0] }
 		      map { [ /(\d+)\.gbk/, $_ ] } 
 		      grep { /\d+\.gbk$/ } keys %filenames ) {
-	    next if $skip_toplevel{$gbk};
+	    next if $skip_toplevel{$gbk} || $mt{$gbk};
 	    open(my $infh => $filenames{$gbk} ) || die $!;
 	    while(<$infh>) {
 		print $master_out $_;
+	    }
+	    close($infh);
+	}
+	open(my $master_mt => ">$basedir/$dir/$projectid/$species_name_base" . '.MT.genbank') || die $!;
+	for my $mt ( keys %mt ) {
+	    open(my $infh => $mt{$mt}) ||die $!;
+	    while(<$infh>) {
+		print $master_mt $_;
 	    }
 	    close($infh);
 	}
