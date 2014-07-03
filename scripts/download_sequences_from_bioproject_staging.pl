@@ -1,7 +1,6 @@
 #!/usr/bin/perl -w
 use strict;
 use Bio::DB::EUtilities;
-use Bio::Tools::EUtilities::History;
 use Bio::SeqIO;
 use File::Spec;
 use Getopt::Long;
@@ -9,11 +8,12 @@ use File::Temp qw(tempfile);
 
 # THIS REQUIRES YOU SHOULD HAVE RUN download_eutils_bioproject.pl already
 my $MAX_TO_QUERY = 500;
-my $basedir = 'genomes_download';
+my $basedir = 'fungal_genomes_download';
 
 my $force = 0;
 my $debug = 0;
 my $retmax = 1000;
+my $runone = 0;
 my $skip_mRNA = 1;
 my $tmpdir = '/dev/shm';
 GetOptions(
@@ -23,51 +23,54 @@ GetOptions(
     's|skip|skipmRNA!' => \$skip_mRNA,
     'f|force!'  => \$force, # force downloads even if file exists	
     't|tmp:s'  => \$tmpdir,
+    'runone!'  => \$runone,
     );
 
 my ($tempfh,$tempfile) = tempfile(DIR => $tmpdir);
 opendir(BASE,$basedir) || die "cannot open $basedir directory: $!";
-for my $dir ( readdir(BASE) ) {
-    next if $dir =~ /^\./;
-    next unless ( -d "$basedir/$dir");
+for my $species_dir ( readdir(BASE) ) {
+    next if $species_dir =~ /^\./;
+    next unless ( -d "$basedir/$species_dir");
 
     # each dir is a species name
-    opendir(DIR,"$basedir/$dir") || die "cannot open $basedir/$dir: $!";
-    for my $projectid ( readdir(DIR) ) {
-	next if $projectid =~ /^\./;
-	next unless ( -d "$basedir/$dir/$projectid");
-	opendir(PROJFILE,"$basedir/$dir/$projectid") || die "cannot open $basedir/$dir/$projectid: $!";
-	for my $projfile ( readdir(PROJFILE)  ) {
+    opendir(DIR,"$basedir/$species_dir") || die "cannot open $basedir/$species_dir: $!";
+    for my $strain_dir ( readdir(DIR) ) {
+	next if $strain_dir =~ /^\./;
+	next unless ( -d "$basedir/$species_dir/$strain_dir");
+	opendir(PROJDIR,"$basedir/$species_dir/$strain_dir") || die "cannot open $basedir/$species_dir/$strain_dir: $!";
+	for my $projfile ( readdir(PROJDIR)  ) {
 	    next unless $projfile =~ /^(\S+)\.txt/;
 	    my $nm = $1;
-	    open(my $fh => "$basedir/$dir/$projectid/$projfile") || die $!;
+	    open(my $fh => "$basedir/$species_dir/$strain_dir/$projfile") || die $!;
 	    my $projtitle = <$fh>;
-	    my $project_id_str = <$fh>;
-	    my $taxonomyid_str = <$fh>;
-	    my $taxonomy_str = <$fh>;
-	    my $header = <$fh>;
-	    chomp($projectid);
+	    my $project_id_str = <$fh>;	    
+	    my $objective = <$fh>;
+	    my $is_reference = <$fh>;
+	    my $header;
+	    while(<$fh>) {
+		$header = $_;
+		last if $header =~ /^GENOMEGROUP/;
+	    }
 	    my @header = split(/\s+/,$header);
 	    my @seqids;
 	    while(<$fh>) {
 		my ($genomegroup,$bioproject,$nuclids) = split;
 		push @seqids, split(/,/,$nuclids);
-
 	    }
 
 	    warn("downloading @seqids\n") if $debug;		
 	    my $first = 1;
 	    my $skip_project = 0;
 	    if( @seqids ) {
-		warn("processing $dir/$projectid\n");
+		warn("processing $species_dir/$strain_dir $projfile\n");
 	    }
             my @needed_ids;
 	    for my $id ( @seqids ) {
 		if( $skip_project ) {
-		    warn("Skipping out on project $projectid, it is mRNA\n");
+		    warn("Skipping out on project $species_dir/strain_dir, it is mRNA\n");
 		    last;
 		}
-		my $outfile = "$basedir/$dir/$projectid/$id.gbk";
+		my $outfile = "$basedir/$species_dir/$strain_dir/$id.gbk";
 		if( $force || ! -f $outfile ) {
 		    push @needed_ids, $id;
 	 	}
@@ -107,8 +110,8 @@ for my $dir ( readdir(BASE) ) {
 			$chunkids{$gi}++;
 			my $out = Bio::SeqIO->new
 			    (-format => 'genbank', 
-			     -file =>">$basedir/$dir/$projectid/$gi.gbk");
-			$first = "$basedir/$dir/$projectid/$gi.gbk" unless defined $first;
+			     -file =>">$basedir/$species_dir/$strain_dir/$gi.gbk");
+			$first = "$basedir/$species_dir/$strain_dir/$gi.gbk" unless defined $first;
 			$out->write_seq($seq);
 		    }
 		    $in->close();
@@ -121,20 +124,20 @@ for my $dir ( readdir(BASE) ) {
 		    }
 		    for my $seqid ( keys %chunkids ) {
 			if( $chunkids{$seqid} == 0 ) {
-			    warn("Download proble with $dir/$projectid/$seqid\n");
+			    warn("Download proble with $species_dir/$strain_dir/$seqid\n");
 			}
 		    }
 		};
 		if( $@ ) {
-		    warn("Download problem with $dir/$projectid from: $@\n");
+		    warn("Download problem with $species_dir/$strain_dir from: $@\n");
 		}
 		if( $skip_project ) {
-		    warn("Skipping out on project $projectid, it is mRNA\n");
+		    warn("Skipping out on project $strain_dir, it is mRNA\n");
 		    last;
 		}
 		sleep 3;
 	    }
 	}
     }
-    #last if $debug;
+    last if $runone;
 }
