@@ -7,10 +7,11 @@ use File::Copy qw(copy);
 use File::Temp qw(tempfile);
 # let's find the 
 my $MAX_TO_QUERY = 100;
-my $basedir = 'genomes_download';
+my $basedir = 'fungal_genomes_download';
 
 my $force = 0;
 my $debug = 0;
+my $runone = undef;
 my $retmax = 1000;
 my $skip_mRNA = 1;
 my $tmpdir = '/dev/shm';
@@ -18,6 +19,7 @@ my $match;
 GetOptions(
     'b|basedir:s' => \$basedir,
     'debug|v!' => \$debug,
+    'runone:s'  => \$runone,
     'retmax:i'  => \$retmax,
     's|skip|skipmRNA!' => \$skip_mRNA,
     'f|force!'  => \$force, # force downloads even if file exists	
@@ -33,6 +35,9 @@ for my $dir ( readdir(BASE) ) {
     next unless ( -d "$basedir/$dir");
     if( $match && $dir !~ /$match/ ) {
 	next;
+    }
+    if( $runone ) {
+	next unless $dir =~ /$runone/;
     }
     # each dir is a species name
     opendir(DIR,"$basedir/$dir") || die "cannot open $basedir/$dir: $!";
@@ -50,6 +55,8 @@ for my $dir ( readdir(BASE) ) {
 		open(my $fh => "$basedir/$dir/$projectid/$pfile") || die $!;
 		my $projtitle = <$fh>;
 		my $project_id_str = <$fh>;
+		my $objective = <$fh>;
+		my $is_reference = <$fh>;
 		my $taxonomyid_str = <$fh>;
 		my $taxonomy_str = <$fh>;
 		my $header = <$fh>;
@@ -146,6 +153,7 @@ for my $dir ( readdir(BASE) ) {
 	    my @list_ids =sort keys %full_acc_list;
 	    while( @list_ids ) {
 		my @chunk = splice(@list_ids, 0, $MAX_TO_QUERY);
+		warn("downloading @chunk\n") if $debug;
 		my $factory = Bio::DB::EUtilities->new(-eutil   => 'efetch',
 						       -db      => 'nucleotide',
 						       -id      => \@chunk,
@@ -213,4 +221,5 @@ for my $dir ( readdir(BASE) ) {
 	    close($infh);
 	}
     }
-} 
+    last if $runone;
+}
