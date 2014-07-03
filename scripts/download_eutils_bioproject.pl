@@ -13,6 +13,8 @@ use Env qw(USER);
 my $SLEEP_TIME = 2;
 my $cache_dir = "/tmp/eutils_".$ENV{USER};
 my $cache_filehandle;
+my $cache_keep_time = '1 day';
+
 my $basedir = 'genomes_download';
 
 my $base = 'http://eutils.ncbi.nlm.nih.gov/entrez/eutils/';
@@ -21,12 +23,13 @@ my $query='txid4751[Organism:exp]';
 my $force = 0;
 my $debug = 0;
 my $retmax = 1000;
-
+my $runonce = 0;
 my $use_cache = 1;
 GetOptions(
     'q|query:s' => \$query,
     'b|basedir:s' => \$basedir,
     'debug|v!' => \$debug,
+    'runonce!' => \$runonce,
     'retmax:i'  => \$retmax,
     'f|force!'  => \$force, # force downloads even if file exists
     'cache!'    => \$use_cache,
@@ -71,8 +74,15 @@ for my $id ( @ids ) {
 
     $url = sprintf('esummary.fcgi?db=genome&id=%d',$id);    
     # post the elink URL
-    $output = get_web_cached($base,$url);
-    my $simplesum = $xs->XMLin($output);
+    $output = get_web_cached($base,$url);    
+    my $simplesum;
+    eval {
+	$simplesum = $xs->XMLin($output);
+    };
+    if( $@ ) {
+	delete_cache($base,$url);
+	next;
+    }
     my $doc = $simplesum->{DocSum};
     my $species;
     my @keyorder;
@@ -82,7 +92,8 @@ for my $id ( @ids ) {
 	push @keyorder,[ $item->{Name}, $item->{content} ];
 	if( $item->{Name} eq 'Organism_Name' ) {
 	    $species = $item->{content};
-	    $species =~ s/\s+/_/g;
+	    $species =~ s/(\s+|\#)/_/g;
+	    $species =~ s/[\'\"]//g;
 	}
     }
     if( ! defined $species ) {
@@ -99,7 +110,6 @@ for my $id ( @ids ) {
     close($summary_rpt);
 
     $url = sprintf('elink.fcgi?dbfrom=genome&db=bioproject&id=%d&retmax=1000',$id);
-    warn( "id is $id\n") if $debug;
     # post the elink URL
     $output = get_web_cached($base,$url);
     my %seen_projids;
@@ -129,10 +139,18 @@ for my $id ( @ids ) {
 	    warn("obtained from $url\n") if $debug;
 	    warn("$output") if $debug;
 
-	    my $simple = $xs->XMLin($output,ForceArray => ['Project_Objectives_List']);
+	    my $simple;
+	    eval { 
+		$simple = $xs->XMLin($output,ForceArray => ['Project_Objectives_List']);
+	    };
+	    if( $@ ) {
+		delete_cache($base,$url);
+		next;
+	    }
+	    
 	    my ($projname, $projtitle,$data_type,$objective);
 	    if( ! ref($simple) ) { 
-		warn("could not parse summary doc\n");
+		warn("could not parse summary doc for $url\n");
 		next;
 	    }
 	    # assume a single document summary will be present since we are
@@ -140,7 +158,8 @@ for my $id ( @ids ) {
 	    my $doc = $simple->{DocumentSummarySet}->{DocumentSummary};
 	    
 	    unless( $data_type = $doc->{Project_Data_Type} ) {
-		die("cannot data type description out of the XML\n");
+		warn("cannot get data type description out of the XML for $url - $species_dir\n");
+		next;
 	    }
 
 	    warn("data type is $data_type\n") if $debug;
@@ -175,8 +194,8 @@ for my $id ( @ids ) {
 		$seen_projids{$bioproj_id} = 0;
 		next;
 	    }
-	    
-	    $projname =~ s/[\s+\/\\'"]/_/g;
+	    $projname =~ s/['"]//g;
+	    $projname =~ s/[\s+\/\#]/_/g;
 	    push @{$info{$projname}},    {id        => $bioproj_id,
 					  objective => $objective,
 					  name      => $projname,
@@ -235,15 +254,15 @@ for my $id ( @ids ) {
 		    print $rptfh join("\n",$inf->{title}, $inf->{name}, $inf->{objective},
 				      sprintf("Is%sreference",$is_ref ? ' ' : ' not ')),"\n";
 		    
-		    warn Dumper($doc->{Lineage}) if $debug;
-		    my (@l,@ln);
-		    for my $item ( @{$doc->{Lineage}->{Item} || []} ) {
-			push @l, $item->{taxid};
-			push @ln, $item->{content};
+#		    warn Dumper($doc->{Lineage}) if $debug;
+#		    my (@l,@ln);
+#		    for my $item ( @{$doc->{Lineage}->{Item} || []} ) {
+#			push @l, $item->{taxid};
+#			push @ln, $item->{content};
 #		print $item->{taxid}, " ", $item->{content}, "\n";
-		    }
-		    print $rptfh join(";", @l), "\n";
-		    print $rptfh join(";", @ln), "\n";
+#		    }
+#		    print $rptfh join(";", @l), "\n";
+#		    print $rptfh join(";", @ln), "\n";
 		    
 		    print $rptfh join("\t", qw(GENOMEGROUP BIOPROJECT IS_REF NUCL_GI_IDS)),"\n";		
 		    print $rptfh join("\t", $id, $inf->{id}, join(",", @nucl_ids)),"\n";
@@ -259,9 +278,9 @@ for my $id ( @ids ) {
 	    
 	}
 	close($projidsfh);
-	last if $debug;
+	last if $runonce;
     }
-    last if $debug;
+    last if $runonce;
 }
 
 sub init_cache {
@@ -282,9 +301,21 @@ sub get_web_cached {
     }
     my $val = $cache_filehandle->get($url);
     unless( $val ) {
+	warn("not in cache\n") if $debug;
 	$val = encode("utf8",get($base.$url));
 	sleep $SLEEP_TIME;
-	$cache_filehandle->set($url,$val,'1 day');
+	$cache_filehandle->set($url,$val,$cache_keep_time);
     } 
     return decode("utf8",$val);    
+}
+
+sub delete_cache {
+    my ($base,$url) = @_;
+    return unless $use_cache;
+
+    if( ! defined $base || ! defined $url ) {
+	die("need both the URL base and the URL stem to proceed\n");
+    }
+
+    $cache_filehandle->remove($base.$url);
 }
